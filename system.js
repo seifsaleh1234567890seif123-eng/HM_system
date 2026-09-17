@@ -203,25 +203,35 @@ function saveOrders() {
  * Real-time sync across all devices via Firebase Cloud Database & local fallbacks
  */
 function initRealtimeSync() {
-  // 1. Firebase Realtime Cloud Listener (Global sync across all laptops & mobile phones)
-  if (typeof FirebaseSync !== 'undefined') {
-    FirebaseSync.listenToOrders(
-      (cloudOrders) => {
-        if (Array.isArray(cloudOrders)) {
-          const isNewOrderArrival = ordersState.orders.length > 0 && cloudOrders.length > ordersState.orders.length;
-          ordersState.orders = cloudOrders;
-          ordersState.lastKnownOrderCount = cloudOrders.length;
-          applyFilters();
-          updateStatsCards();
+  function bindFirebase() {
+    if (typeof FirebaseSync !== 'undefined') {
+      FirebaseSync.listenToOrders(
+        (cloudOrders) => {
+          if (Array.isArray(cloudOrders)) {
+            const isNewOrderArrival = ordersState.orders.length > 0 && cloudOrders.length > ordersState.orders.length;
+            ordersState.orders = cloudOrders;
+            ordersState.lastKnownOrderCount = cloudOrders.length;
+            applyFilters();
+            updateStatsCards();
+          }
+        },
+        (newOrder) => {
+          // Trigger sound & banner when a new order arrives from any phone/laptop
+          if (newOrder && newOrder.id) {
+            triggerNewOrderAlert(newOrder.id, newOrder.customer?.name || 'عميل جديد');
+          }
         }
-      },
-      (newOrder) => {
-        // Trigger sound & banner when a new order arrives from any phone/laptop
-        if (newOrder && newOrder.id) {
-          triggerNewOrderAlert(newOrder.id, newOrder.customer?.name || 'عميل جديد');
-        }
-      }
-    );
+      );
+      return true;
+    }
+    return false;
+  }
+
+  // Initial attempt
+  if (!bindFirebase()) {
+    // Retry in 400ms and 1500ms in case script loads asynchronously
+    setTimeout(bindFirebase, 400);
+    setTimeout(bindFirebase, 1500);
   }
 
   // 2. Storage Event listener (triggers across different tabs instantly on same device)
@@ -1156,17 +1166,29 @@ function backupOrdersJSON() {
  * Clear All Completed / Cancelled Orders
  */
 function clearOldOrders() {
-  const completedCount = ordersState.orders.filter(o => o.status === 'تم التسليم' || o.status === 'ملغي').length;
+  const toDelete = ordersState.orders.filter(o => o.status === 'تم التسليم' || o.status === 'ملغي');
+  const completedCount = toDelete.length;
   if (completedCount === 0) {
-    showSysToast('لا توجد طلبات مكتملة أو ملغية للأرشفة', 'info');
+    showSysToast('لا توجد طلبات مسلّمة أو ملغية للأرشفة حالياً', 'info');
     return;
   }
 
-  if (confirm(`هل ترغب في مسح وأرشفة ${completedCount} طلب من الطلبات المسلمة والملغية؟ (سيتم الاحتفاظ بالطلبات الجديدة والجارية)`)) {
+  if (confirm(`هل ترغب في مسح وأرشفة ${completedCount} طلب من الطلبات المسلمة والملغية نهائياً من السيرفر السحابي؟ (سيتم الإبقاء على الطلبات الجديدة وقيد التجهيز)`)) {
+    const idsToDelete = toDelete.map(o => o.id);
     ordersState.orders = ordersState.orders.filter(o => o.status !== 'تم التسليم' && o.status !== 'ملغي');
     saveOrders();
+
+    // 1. Delete from Firebase Cloud Database
+    if (typeof FirebaseSync !== 'undefined' && FirebaseSync.deleteMultipleOrders) {
+      FirebaseSync.deleteMultipleOrders(idsToDelete);
+    } else {
+      idsToDelete.forEach(id => {
+        fetch(`https://project-hm-1aeff-default-rtdb.firebaseio.com/orders/${id}.json`, { method: 'DELETE' }).catch(() => {});
+      });
+    }
+
     applyFilters();
-    showSysToast(`تم تنظيف ${completedCount} طلب مكتمل بنجاح`, 'success');
+    showSysToast(`✅ تم تنظيف ومسح ${completedCount} طلب من السحابة بنجاح ولن تعود عند التحديث`, 'success');
   }
 }
 
