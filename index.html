@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة تحكم وإدارة طلبات المتجر | HM Store System</title>
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  
+  <!-- System CSS -->
+  <link rel="stylesheet" href="system.css" />
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header class="sys-header">
+    <div class="sys-header-container">
+      <div class="sys-brand">
+        <div class="sys-logo">HM</div>
+        <div class="sys-title">
+          <h1>
+            <i class="fa-solid fa-boxes-packing" style="color: var(--sys-secondary);"></i>
+            سيستم إدارة ومتابعة الطلبات
+          </h1>
+          <p>لوحة التحكم الفورية بمبيعات وطلبات متجر HM Store</p>
+        </div>
+      </div>
+
+      <div class="sys-header-actions">
+        <div class="firebase-live-indicator" style="display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:700; background:rgba(255,255,255,0.12); padding:0.35rem 0.75rem; border-radius:20px; border:1px solid rgba(255,255,255,0.25); color:#fff;" title="حالة الاتصال المباشر بالسيرفر السحابي لجميع الأجهزة">
+          <span style="color:#10b981; font-size:12px;">●</span> متصل بالسيرفر السحابي (Live)
+        </div>
+        <button id="toggleSoundBtn" class="sys-btn sys-btn-outline sys-btn-sm" onclick="toggleSoundNotification()" title="تشغيل / كتم صوت التنبيهات">
+          <i id="soundIcon" class="fa-solid fa-volume-high" style="color: #10b981;"></i>
+          <span id="soundStatusText">الصوت: مفعل</span>
+        </button>
+        <button class="sys-btn sys-btn-outline sys-btn-sm" onclick="testOrderSound()" title="تجربة واستماع لصوت التنبيه">
+          <i class="fa-solid fa-bell"></i> تجربة الصوت
+        </button>
+        <a href="../index.html" class="sys-btn sys-btn-outline" target="_blank">
+          <i class="fa-solid fa-store"></i> فتح واجهة المتجر
+        </a>
+        <button class="sys-btn sys-btn-primary" onclick="exportOrdersToCSV()">
+          <i class="fa-solid fa-file-excel"></i> تصدير إكسل (CSV)
+        </button>
+        <button class="sys-btn sys-btn-outline sys-btn-sm" onclick="backupOrdersJSON()" title="تحميل نسخة احتياطية">
+          <i class="fa-solid fa-download"></i> نسخة احتياطية
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Preloaded Audio Element for Instant Sound -->
+  <audio id="sysOrderAudio" preload="auto" style="display:none;"></audio>
+
+  <!-- Main Content Container -->
+  <main class="sys-container">
+
+    <!-- KPI / Statistics Cards Grid -->
+    <section class="sys-stats-grid">
+      
+      <div class="sys-stat-card stat-card-total" onclick="setQuickStatusFilter('all', null)" title="عرض جميع الطلبات">
+        <div class="sys-stat-icon stat-icon-total">
+          <i class="fa-solid fa-bag-shopping"></i>
+        </div>
+        <div class="sys-stat-info">
+          <h3 id="statTotalOrders">0</h3>
+          <p>إجمالي الطلبات</p>
+        </div>
+      </div>
+
+      <div class="sys-stat-card stat-card-new" onclick="setQuickStatusFilter('جديد', null)" title="عرض الطلبات الجديدة">
+        <div class="sys-stat-icon stat-icon-new">
+          <i class="fa-solid fa-bell"></i>
+        </div>
+        <div class="sys-stat-info">
+          <h3 id="statNewOrders">0</h3>
+          <p>طلبات جديدة 🟡</p>
+        </div>
+      </div>
+
+      <div class="sys-stat-card stat-card-processing" onclick="setQuickStatusFilter('قيد التجهيز', null)" title="عرض الطلبات قيد التجهيز والشحن">
+        <div class="sys-stat-icon stat-icon-processing">
+          <i class="fa-solid fa-truck-ramp-box"></i>
+        </div>
+        <div class="sys-stat-info">
+          <h3 id="statProcessingOrders">0</h3>
+          <p>قيد الشحن 🔵</p>
+        </div>
+      </div>
+
+      <div class="sys-stat-card stat-card-completed" onclick="setQuickStatusFilter('تم التسليم', null)" title="عرض الطلبات المسلمة">
+        <div class="sys-stat-icon stat-icon-completed">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <div class="sys-stat-info">
+          <h3 id="statCompletedOrders">0</h3>
+          <p>تم تسليمها 🟢</p>
+        </div>
+      </div>
+
+      <div class="sys-stat-card stat-card-revenue" title="إجمالي مبيعات المتجر">
+        <div class="sys-stat-icon stat-icon-revenue">
+          <i class="fa-solid fa-coins"></i>
+        </div>
+        <div class="sys-stat-info">
+          <h3 id="statTotalRevenue">0 ج.م</h3>
+          <p>إجمالي المبيعات 💰</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Orders Management Panel -->
+    <section class="sys-panel">
+      
+      <!-- Panel Header -->
+      <div class="sys-panel-header">
+        <div class="sys-panel-title">
+          <i class="fa-solid fa-list-check" style="color: var(--sys-primary);"></i>
+          <span>إدارة ومتابعة الطلبات</span>
+          <span class="sys-badge-count" id="ordersCountBadge">0 طلب</span>
+        </div>
+
+        <div class="sys-panel-actions">
+          <button class="sys-btn sys-btn-light sys-btn-sm" onclick="loadOrders(); applyFilters(); showSysToast('تم تحديث البيانات 🔄', 'info');">
+            <i class="fa-solid fa-rotate"></i> تحديث
+          </button>
+          <button class="sys-btn sys-btn-light sys-btn-sm" onclick="clearOldOrders()" title="أرشفة الطلبات المنتهية">
+            <i class="fa-solid fa-broom"></i> تنظيف
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters Toolbar -->
+      <div class="sys-toolbar">
+        <div class="sys-search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="sysSearchInput" placeholder="بحث باسم العميل، الهاتف، كود الطلب..." />
+          <button class="sys-clear-search-btn" id="sysClearSearchBtn" onclick="clearSysSearch()" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="sys-filters">
+          <select id="statusFilterSelect" class="sys-select" onchange="handleSelectStatusChange(this.value)">
+            <option value="all">📌 كل الحالات</option>
+            <option value="جديد">🟡 طلبات جديدة</option>
+            <option value="قيد التجهيز">🔵 قيد التجهيز</option>
+            <option value="تم الشحن">🚚 تم الشحن</option>
+            <option value="تم التسليم">🟢 تم التسليم</option>
+            <option value="ملغي">🔴 ملغية</option>
+          </select>
+
+          <select id="payMethodFilterSelect" class="sys-select" onchange="handleSelectPayChange(this.value)">
+            <option value="all">💳 كل طرق الدفع</option>
+            <option value="cod">💵 الدفع عند الاستلام</option>
+            <option value="vodafone">📱 فودافون كاش</option>
+            <option value="instapay">⚡ إنستاباي (InstaPay)</option>
+          </select>
+
+          <select id="govFilterSelect" class="sys-select" onchange="ordersState.selectedGov = this.value; applyFilters();">
+            <option value="all">🗺️ كل المحافظات</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Fast Quick Filter Pills (One-Touch on Mobile) -->
+      <div class="sys-quick-filters">
+        <button class="sys-pill active" id="pillAll" onclick="setQuickStatusFilter('all', this)"><i class="fa-solid fa-layer-group"></i> الكل</button>
+        <button class="sys-pill pill-new" id="pillNew" onclick="setQuickStatusFilter('جديد', this)">🟡 جديدة</button>
+        <button class="sys-pill pill-processing" id="pillProc" onclick="setQuickStatusFilter('قيد التجهيز', this)">🔵 قيد التجهيز</button>
+        <button class="sys-pill pill-shipped" id="pillShip" onclick="setQuickStatusFilter('تم الشحن', this)">🚚 تم الشحن</button>
+        <button class="sys-pill pill-delivered" id="pillDeliv" onclick="setQuickStatusFilter('تم التسليم', this)">🟢 تم التسليم</button>
+        <button class="sys-pill pill-vodafone" id="pillVoda" onclick="setQuickPaymentFilter('vodafone', this)">📱 فودافون كاش</button>
+        <button class="sys-pill pill-instapay" id="pillInsta" onclick="setQuickPaymentFilter('instapay', this)">⚡ إنستاباي</button>
+      </div>
+
+      <!-- Orders Table -->
+      <div class="sys-table-responsive">
+        <table class="sys-table">
+          <thead>
+            <tr>
+              <th>رقم وتاريخ الطلب</th>
+              <th>بيانات العميل</th>
+              <th>المحافظة والعنوان</th>
+              <th>المنتجات والكمية</th>
+              <th>طريقة الدفع والحساب</th>
+              <th>حالة الطلب</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="ordersTableBody">
+            <!-- Populated via system.js -->
+          </tbody>
+        </table>
+
+        <!-- Empty State -->
+        <div class="sys-empty-state" id="emptyOrdersState" style="display: none;">
+          <i class="fa-solid fa-inbox"></i>
+          <h3>لا توجد طلبات تطابق البحث حالياً</h3>
+          <p>عند قيام أي عميل بطلب أوردر جديد من المتجر، ستظهر بياناته فوراً هنا مع صوت تنبيهي تلقائي.</p>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Order Details Modal -->
+  <div class="sys-modal" id="orderDetailsModal">
+    <div class="sys-modal-dialog">
+      
+      <div class="sys-modal-header">
+        <h2>
+          <i class="fa-solid fa-file-invoice" style="color:var(--sys-secondary);"></i>
+          تفاصيل الطلب: <span id="modalOrderId" style="direction:ltr; display:inline-block; font-family:monospace; margin-right:5px;">HM-000000</span>
+        </h2>
+        <button class="sys-modal-close" onclick="closeOrderDetailsModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="sys-modal-body">
+        
+        <!-- Customer Info Grid -->
+        <div class="detail-grid">
+          <div class="detail-card">
+            <h4><i class="fa-solid fa-user"></i> اسم العميل</h4>
+            <p id="modalCustName">-</p>
+          </div>
+
+          <div class="detail-card">
+            <h4><i class="fa-solid fa-phone"></i> رقم الهاتف</h4>
+            <p id="modalCustPhone">-</p>
+          </div>
+
+          <div class="detail-card">
+            <h4><i class="fa-solid fa-map-location-dot"></i> المحافظة</h4>
+            <p id="modalCustGov">-</p>
+          </div>
+
+          <div class="detail-card">
+            <h4><i class="fa-solid fa-credit-card"></i> طريقة الدفع</h4>
+            <p id="modalCustPayment">-</p>
+          </div>
+
+          <div class="detail-card" style="grid-column: 1 / -1;">
+            <h4><i class="fa-solid fa-house-chimney"></i> العنوان التفصيلي</h4>
+            <p id="modalCustAddress">-</p>
+          </div>
+
+          <div class="detail-card" style="grid-column: 1 / -1;">
+            <h4><i class="fa-solid fa-note-sticky"></i> ملاحظات إضافية</h4>
+            <p id="modalCustNotes" style="font-weight: normal; color: var(--sys-text-muted);">-</p>
+          </div>
+        </div>
+
+        <!-- Ordered Items Table -->
+        <h4 style="font-size:1rem; font-weight:800; color:var(--sys-text-main); margin-bottom:0.5rem; display:flex; align-items:center; gap:0.4rem;">
+          <i class="fa-solid fa-shirt" style="color:var(--sys-primary);"></i> المنتجات والقطع المطلوبة:
+        </h4>
+        
+        <table class="order-items-table">
+          <thead>
+            <tr>
+              <th style="width:30px;">#</th>
+              <th>المنتج والمواصفات</th>
+              <th>الكمية والنظام</th>
+              <th>سعر الوحدة</th>
+              <th>الإجمالي</th>
+            </tr>
+          </thead>
+          <tbody id="modalItemsTbody">
+            <!-- Populated via system.js -->
+          </tbody>
+        </table>
+
+        <!-- Totals Breakdown -->
+        <div class="order-totals-box">
+          <div class="totals-row">
+            <span>إجمالي المنتجات:</span>
+            <strong id="modalSubtotal">0 ج.م</strong>
+          </div>
+          <div class="totals-row">
+            <span>مصاريف الشحن:</span>
+            <strong id="modalShipping">0 ج.م</strong>
+          </div>
+          <div class="totals-row grand-total">
+            <span>المبلغ الإجمالي المستحق:</span>
+            <strong id="modalGrandTotal">0 ج.م</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="sys-modal-footer">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-size:0.85rem; font-weight:700;">تغيير الحالة:</span>
+          <select id="modalOrderStatusSelect" class="sys-select" onchange="handleModalStatusChange(this.value)">
+            <option value="جديد">🟡 جديد</option>
+            <option value="قيد التجهيز">🔵 قيد التجهيز</option>
+            <option value="تم الشحن">🚚 تم الشحن</option>
+            <option value="تم التسليم">🟢 تم التسليم</option>
+            <option value="ملغي">🔴 ملغي</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <button class="sys-btn sys-btn-primary" onclick="if(ordersState.activeOrderModalId) printOrderInvoice(ordersState.activeOrderModalId)">
+            <i class="fa-solid fa-print"></i> طباعة الفاتورة والبوليصة
+          </button>
+          <button class="sys-btn sys-btn-light" onclick="closeOrderDetailsModal()">
+            إغلاق
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Print Invoice Container -->
+  <div id="printInvoiceArea"></div>
+
+  <!-- Firebase Cloud SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script src="../firebase_sync.js"></script>
+
+  <!-- Products Reference Data -->
+  <script src="../products_data.js"></script>
+  <!-- System JavaScript -->
+  <script src="system.js"></script>
+</body>
+</html>
