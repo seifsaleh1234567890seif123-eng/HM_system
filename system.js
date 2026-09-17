@@ -551,6 +551,48 @@ function updateStatsCards() {
 }
 
 /**
+ * Safely format product image URL to work reliably across GitHub Pages, Localhost, and Multi-Device
+ */
+function safeFormatImageSrc(rawImg, basePath) {
+  const base = basePath !== undefined ? basePath : '../';
+  if (!rawImg) return '';
+  let str = String(rawImg).trim();
+  if (!str) return '';
+
+  // 1. Base64 Data URI
+  if (str.startsWith('data:')) return str;
+
+  // 2. Strip localhost / 127.0.0.1 / file:// URLs to get pure filename
+  if (str.includes('localhost') || str.includes('127.0.0.1') || str.startsWith('file:')) {
+    try {
+      const urlObj = new URL(str, window.location.href);
+      str = decodeURIComponent(urlObj.pathname.split('/').pop());
+    } catch(e) {
+      str = decodeURIComponent(str.split('/').pop());
+    }
+  }
+
+  // 3. Absolute remote URL (e.g. Cloudinary, Firebase Storage, Imgur, external host)
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    try {
+      const decoded = decodeURI(str);
+      return encodeURI(decoded);
+    } catch(e) {
+      return str;
+    }
+  }
+
+  // 4. Local relative filename or path
+  try {
+    let clean = decodeURIComponent(str);
+    clean = clean.replace(/^(\.\.\/|\.\/|\/)+/, '');
+    return base + encodeURIComponent(clean).replace(/%2F/g, '/');
+  } catch(e) {
+    return base + str;
+  }
+}
+
+/**
  * Helper to resolve product image, code, and details
  */
 function resolveProductInfo(item) {
@@ -558,10 +600,14 @@ function resolveProductInfo(item) {
   let code = item.code || '';
   const name = item.name || '';
 
-  if ((!img || !code) && window.PRODUCTS_DATA && Array.isArray(window.PRODUCTS_DATA)) {
-    const found = window.PRODUCTS_DATA.find(function(p) { return p.id === item.id || p.name === name || (code && p.code === code); });
+  if (window.PRODUCTS_DATA && Array.isArray(window.PRODUCTS_DATA)) {
+    const found = window.PRODUCTS_DATA.find(function(p) {
+      return (item.id && p.id === item.id) ||
+             (code && p.code === code) ||
+             (name && (p.name === name || p.title === name));
+    });
     if (found) {
-      if (!img) img = found.image;
+      if (!img || img.includes('localhost') || img.includes('127.0.0.1')) img = found.image;
       if (!code) code = found.code;
     }
   }
@@ -571,10 +617,7 @@ function resolveProductInfo(item) {
     if (codeMatch) code = codeMatch[1];
   }
 
-  let resolvedImg = img;
-  if (resolvedImg && !resolvedImg.startsWith('http') && !resolvedImg.startsWith('data:') && !resolvedImg.startsWith('../')) {
-    resolvedImg = '../' + resolvedImg;
-  }
+  const resolvedImg = safeFormatImageSrc(img, '../');
 
   return {
     id: item.id,
@@ -644,7 +687,7 @@ function renderOrdersTable() {
             const unitLabel = item.unit || item.shortLabel || 'قطعة';
             return '<div class="sys-order-item-mini-card">' +
               '<div class="sys-thumb-wrap">' +
-                '<img src="' + encodeURI(item.image) + '" class="sys-order-item-mini-img" alt="' + item.name + '" loading="lazy" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
+                '<img src="' + item.image + '" class="sys-order-item-mini-img" alt="' + item.name + '" loading="lazy" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
                 '<div class="sys-img-fallback-box" style="display:none;">👕</div>' +
               '</div>' +
               '<div class="sys-order-item-mini-info">' +
@@ -778,7 +821,7 @@ function openOrderDetailsModal(orderId) {
         '<td>' + (i + 1) + '</td>' +
         '<td>' +
           '<div class="order-item-info-col">' +
-            '<img src="' + encodeURI(item.image) + '" class="order-item-thumb" onerror="this.src=\'data:image/svg+xml;utf8,<svg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'40\\\' height=\\\'40\\\' viewBox=\\\'0 0 24 24\\\' fill=\\\'%23cbd5e1\\\'><path d=\\\'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z\\\'/></svg>\'" />' +
+            '<img src="' + item.image + '" class="order-item-thumb" onerror="this.src=\'data:image/svg+xml;utf8,<svg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'40\\\' height=\\\'40\\\' viewBox=\\\'0 0 24 24\\\' fill=\\\'%23cbd5e1\\\'><path d=\\\'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z\\\'/></svg>\'" />' +
             '<div>' +
               '<strong style="color:var(--sys-text-main); font-size:0.9rem;">' + item.name + '</strong>' +
               '<div style="font-size:0.75rem; color:var(--sys-text-muted); margin-top:3px;">' +
