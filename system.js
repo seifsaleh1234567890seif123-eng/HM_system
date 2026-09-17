@@ -340,6 +340,17 @@ function testOrderSound() {
 }
 
 /**
+ * Handle opening the store from system header
+ */
+function handleOpenStoreLink(e) {
+  const storeUrl = getStoreBaseUrl();
+  if (storeUrl && storeUrl.startsWith('http')) {
+    if (e) e.preventDefault();
+    window.open(storeUrl, '_blank');
+  }
+}
+
+/**
  * Flash browser tab title to alert user
  */
 let titleFlashTimer = null;
@@ -551,10 +562,72 @@ function updateStatsCards() {
 }
 
 /**
+ * Detect the main Store's base URL dynamically
+ */
+function getStoreBaseUrl() {
+  if (typeof window === 'undefined' || !window.location) return '../';
+  const loc = window.location;
+
+  // 1. GitHub Pages detection (e.g. https://seifsaleh1234567890seif123-eng.github.io/HM_system/)
+  if (loc.hostname.endsWith('github.io')) {
+    const pathParts = loc.pathname.split('/').filter(Boolean);
+    const currentRepo = pathParts[0] || '';
+    
+    // If hosted on separate HM_system repository, the store is on HM
+    if (currentRepo.toLowerCase().endsWith('_system') || currentRepo.toLowerCase().endsWith('-system')) {
+      const storeRepo = currentRepo.replace(/[-_]system$/i, '');
+      return loc.origin + '/' + storeRepo + '/';
+    }
+    
+    // If hosted under /HM/system/
+    if (pathParts.length > 1 && pathParts[1] === 'system') {
+      return loc.origin + '/' + currentRepo + '/';
+    }
+
+    if (currentRepo) {
+      return loc.origin + '/' + currentRepo + '/';
+    }
+  }
+
+  // 2. Default relative to system folder
+  return '../';
+}
+
+/**
+ * Handle Image Loading Errors gracefully with multi-path fallback
+ */
+function handleImageError(imgEl, rawName) {
+  if (!imgEl) return;
+  const step = parseInt(imgEl.getAttribute('data-err-step') || '0', 10);
+  const cleanName = decodeURIComponent(rawName || imgEl.alt || '').replace(/^(\.\.\/|\.\/|\/)+/, '');
+  const encodedName = encodeURIComponent(cleanName).replace(/%2F/g, '/');
+
+  if (step === 0) {
+    // Step 1: Try direct store URL on GitHub Pages or origin
+    imgEl.setAttribute('data-err-step', '1');
+    const storeBase = getStoreBaseUrl();
+    imgEl.src = storeBase + encodedName;
+  } else if (step === 1) {
+    // Step 2: Try relative ../
+    imgEl.setAttribute('data-err-step', '2');
+    imgEl.src = '../' + encodedName;
+  } else if (step === 2) {
+    // Step 3: Try local ./
+    imgEl.setAttribute('data-err-step', '3');
+    imgEl.src = './' + encodedName;
+  } else {
+    // Step 4: Show clean SVG/emoji fallback box
+    imgEl.style.display = 'none';
+    if (imgEl.nextElementSibling) {
+      imgEl.nextElementSibling.style.display = 'flex';
+    }
+  }
+}
+
+/**
  * Safely format product image URL to work reliably across GitHub Pages, Localhost, and Multi-Device
  */
-function safeFormatImageSrc(rawImg, basePath) {
-  const base = basePath !== undefined ? basePath : '../';
+function safeFormatImageSrc(rawImg) {
   if (!rawImg) return '';
   let str = String(rawImg).trim();
   if (!str) return '';
@@ -572,7 +645,7 @@ function safeFormatImageSrc(rawImg, basePath) {
     }
   }
 
-  // 3. Absolute remote URL (e.g. Cloudinary, Firebase Storage, Imgur, external host)
+  // 3. Absolute remote URL (if already pointing to a real web host)
   if (str.startsWith('http://') || str.startsWith('https://')) {
     try {
       const decoded = decodeURI(str);
@@ -582,13 +655,14 @@ function safeFormatImageSrc(rawImg, basePath) {
     }
   }
 
-  // 4. Local relative filename or path
+  // 4. Local relative filename or path -> Resolve with getStoreBaseUrl()
   try {
     let clean = decodeURIComponent(str);
     clean = clean.replace(/^(\.\.\/|\.\/|\/)+/, '');
+    const base = getStoreBaseUrl();
     return base + encodeURIComponent(clean).replace(/%2F/g, '/');
   } catch(e) {
-    return base + str;
+    return getStoreBaseUrl() + str;
   }
 }
 
@@ -617,12 +691,13 @@ function resolveProductInfo(item) {
     if (codeMatch) code = codeMatch[1];
   }
 
-  const resolvedImg = safeFormatImageSrc(img, '../');
+  const resolvedImg = safeFormatImageSrc(img);
 
   return {
     id: item.id,
     name: name,
     image: resolvedImg,
+    rawImage: img,
     code: code || 'عام',
     price: item.price,
     quantity: item.quantity,
@@ -687,7 +762,7 @@ function renderOrdersTable() {
             const unitLabel = item.unit || item.shortLabel || 'قطعة';
             return '<div class="sys-order-item-mini-card">' +
               '<div class="sys-thumb-wrap">' +
-                '<img src="' + item.image + '" class="sys-order-item-mini-img" alt="' + item.name + '" loading="lazy" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
+                '<img src="' + item.image + '" class="sys-order-item-mini-img" alt="' + item.name + '" loading="lazy" data-err-step="0" onerror="handleImageError(this, \'' + (item.rawImage || item.image || '').replace(/'/g, "\\'") + '\');" />' +
                 '<div class="sys-img-fallback-box" style="display:none;">👕</div>' +
               '</div>' +
               '<div class="sys-order-item-mini-info">' +
@@ -821,7 +896,7 @@ function openOrderDetailsModal(orderId) {
         '<td>' + (i + 1) + '</td>' +
         '<td>' +
           '<div class="order-item-info-col">' +
-            '<img src="' + item.image + '" class="order-item-thumb" onerror="this.src=\'data:image/svg+xml;utf8,<svg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'40\\\' height=\\\'40\\\' viewBox=\\\'0 0 24 24\\\' fill=\\\'%23cbd5e1\\\'><path d=\\\'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z\\\'/></svg>\'" />' +
+            '<img src="' + item.image + '" class="order-item-thumb" data-err-step="0" onerror="handleImageError(this, \'' + (item.rawImage || item.image || '').replace(/'/g, "\\'") + '\');" />' +
             '<div>' +
               '<strong style="color:var(--sys-text-main); font-size:0.9rem;">' + item.name + '</strong>' +
               '<div style="font-size:0.75rem; color:var(--sys-text-muted); margin-top:3px;">' +
