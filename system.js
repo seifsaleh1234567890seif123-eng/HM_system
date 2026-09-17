@@ -1,6 +1,6 @@
 /**
  * HM STORE - SYSTEM & ORDERS DASHBOARD JAVASCRIPT
- * Real-time Order Management, Filtering, Printing & Analytics
+ * Real-time Order Management, Pure SVG Icons, Robust Image Handling
  */
 
 // Configuration
@@ -114,24 +114,24 @@ function getAudioContext() {
     }
   }
   if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch(() => {});
+    sharedAudioCtx.resume().catch(function() {});
   }
   return sharedAudioCtx;
 }
 
-// Silent auto-resume on any user click or key
-['click', 'touchstart', 'keydown'].forEach(evt => {
-  document.addEventListener(evt, () => {
+// Auto-unlock audio on first touch
+['click', 'touchstart', 'keydown'].forEach(function(evt) {
+  document.addEventListener(evt, function() {
     ordersState.audioUnlocked = true;
     const ctx = getAudioContext();
     if (ctx && ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
+      ctx.resume().catch(function() {});
     }
   }, { once: false, passive: true });
 });
 
 // Initialize System on DOM Loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
   loadOrders();
   ordersState.lastKnownOrderCount = ordersState.orders.length;
   initRealtimeSync();
@@ -150,52 +150,58 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) {}
 
   // Search and Filter Listeners
-  document.getElementById('sysSearchInput')?.addEventListener('input', (e) => {
-    ordersState.searchQuery = e.target.value.trim().toLowerCase();
-    applyFilters();
-  });
+  const searchInp = document.getElementById('sysSearchInput');
+  if (searchInp) {
+    searchInp.addEventListener('input', function(e) {
+      ordersState.searchQuery = e.target.value.trim().toLowerCase();
+      const clearBtn = document.getElementById('sysClearSearchBtn');
+      if (clearBtn) clearBtn.style.display = ordersState.searchQuery ? 'block' : 'none';
+      applyFilters();
+    });
+  }
 
-  document.getElementById('statusFilterSelect')?.addEventListener('change', (e) => {
-    ordersState.selectedStatus = e.target.value;
-    applyFilters();
-  });
+  const statusSel = document.getElementById('statusFilterSelect');
+  if (statusSel) {
+    statusSel.addEventListener('change', function(e) {
+      handleSelectStatusChange(e.target.value);
+    });
+  }
 
-  document.getElementById('payMethodFilterSelect')?.addEventListener('change', (e) => {
-    ordersState.selectedPayMethod = e.target.value;
-    applyFilters();
-  });
+  const paySel = document.getElementById('payMethodFilterSelect');
+  if (paySel) {
+    paySel.addEventListener('change', function(e) {
+      handleSelectPayChange(e.target.value);
+    });
+  }
 
-  document.getElementById('govFilterSelect')?.addEventListener('change', (e) => {
-    ordersState.selectedGov = e.target.value;
-    applyFilters();
-  });
+  const govSel = document.getElementById('govFilterSelect');
+  if (govSel) {
+    govSel.addEventListener('change', function(e) {
+      ordersState.selectedGov = e.target.value;
+      applyFilters();
+    });
+  }
 });
 
 /**
- * Load orders from Cloud (Firebase) and localStorage fallback
+ * Load orders from localStorage cache
  */
 function loadOrders() {
   try {
     const raw = localStorage.getItem('hm_store_orders');
     ordersState.orders = raw ? JSON.parse(raw) : [];
   } catch (err) {
-    console.error('Error loading local orders:', err);
     ordersState.orders = [];
   }
-  ordersState.filteredOrders = [...ordersState.orders];
+  ordersState.filteredOrders = [].concat(ordersState.orders);
 }
 
 /**
- * Save orders to localStorage & Cloud
+ * Save orders to localStorage
  */
 function saveOrders() {
-  localStorage.setItem('hm_store_orders', JSON.stringify(ordersState.orders));
-  // Broadcast change
   try {
-    if ('BroadcastChannel' in window) {
-      const channel = new BroadcastChannel('hm_orders_channel');
-      channel.postMessage({ type: 'ORDERS_UPDATED' });
-    }
+    localStorage.setItem('hm_store_orders', JSON.stringify(ordersState.orders));
   } catch (e) {}
 }
 
@@ -206,19 +212,18 @@ function initRealtimeSync() {
   function bindFirebase() {
     if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.listenToOrders(
-        (cloudOrders) => {
+        function(cloudOrders) {
           if (Array.isArray(cloudOrders)) {
-            const isNewOrderArrival = ordersState.orders.length > 0 && cloudOrders.length > ordersState.orders.length;
+            const isNewArrival = ordersState.orders.length > 0 && cloudOrders.length > ordersState.orders.length;
             ordersState.orders = cloudOrders;
             ordersState.lastKnownOrderCount = cloudOrders.length;
             applyFilters();
             updateStatsCards();
           }
         },
-        (newOrder) => {
-          // Trigger sound & banner when a new order arrives from any phone/laptop
+        function(newOrder) {
           if (newOrder && newOrder.id) {
-            triggerNewOrderAlert(newOrder.id, newOrder.customer?.name || 'عميل جديد');
+            triggerNewOrderAlert(newOrder.id, newOrder.customer ? newOrder.customer.name : 'عميل جديد');
           }
         }
       );
@@ -227,15 +232,13 @@ function initRealtimeSync() {
     return false;
   }
 
-  // Initial attempt
   if (!bindFirebase()) {
-    // Retry in 400ms and 1500ms in case script loads asynchronously
-    setTimeout(bindFirebase, 400);
-    setTimeout(bindFirebase, 1500);
+    setTimeout(bindFirebase, 300);
+    setTimeout(bindFirebase, 1200);
   }
 
-  // 2. Storage Event listener (triggers across different tabs instantly on same device)
-  window.addEventListener('storage', (e) => {
+  // Storage listener across tabs
+  window.addEventListener('storage', function(e) {
     if (e.key === 'hm_store_orders') {
       const prevCount = ordersState.orders.length;
       loadOrders();
@@ -247,25 +250,6 @@ function initRealtimeSync() {
       }
     }
   });
-
-  // 3. BroadcastChannel (fast intra-browser tab communication)
-  try {
-    if ('BroadcastChannel' in window) {
-      const channel = new BroadcastChannel('hm_orders_channel');
-      channel.onmessage = (msg) => {
-        if (msg.data && msg.data.type === 'NEW_ORDER') {
-          loadOrders();
-          ordersState.lastKnownOrderCount = ordersState.orders.length;
-          applyFilters();
-          triggerNewOrderAlert(msg.data.orderId, msg.data.customerName);
-        } else if (msg.data && msg.data.type === 'ORDERS_UPDATED') {
-          loadOrders();
-          ordersState.lastKnownOrderCount = ordersState.orders.length;
-          applyFilters();
-        }
-      };
-    }
-  } catch (e) {}
 }
 
 /**
@@ -274,104 +258,36 @@ function initRealtimeSync() {
 function triggerNewOrderAlert(orderId, customerName) {
   playOrderNotificationSound();
   
-  const idStr = orderId ? ` (#${orderId})` : '';
-  const nameStr = customerName ? ` من ${customerName}` : '';
-  showSysToast(`🔔 طلب شراء جديد وصل الآن${idStr}${nameStr}!`, 'success');
+  const idStr = orderId ? ' (#' + orderId + ')' : '';
+  const nameStr = customerName ? ' من ' + customerName : '';
+  showSysToast('🔔 طلب شراء جديد وصل الآن' + idStr + nameStr + '!', 'success');
   
-  // Flash document title
   flashTabTitle('🔔 (طلب جديد وصل!)');
-
-  // Browser Notification if supported & permitted
-  try {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('متجر HM Store - طلب جديد!', {
-        body: `تم استلام طلب جديد${idStr}${nameStr}. اضغط للمعاينة.`,
-        icon: '../HM Logo.png'
-      });
-    }
-  } catch (e) {}
 }
 
 /**
- * Play high-quality distinct chime / cash-register notification sound
- * Employs Multi-Stream: Preloaded DOM Element + HTML5 Audio Object + Web Audio API Matrix
+ * Play high-quality notification chime
  */
 function playOrderNotificationSound() {
   if (!ordersState.isSoundEnabled) return;
 
-  // 1. Play Preloaded DOM Audio Element
   try {
     const audioEl = document.getElementById('sysOrderAudio');
     if (audioEl) {
-      if (!audioEl.src) {
-        audioEl.src = getWavChimeDataUri();
-      }
+      if (!audioEl.src) audioEl.src = getWavChimeDataUri();
       audioEl.currentTime = 0;
-      audioEl.play().catch(() => {});
+      audioEl.play().catch(function() {});
     }
   } catch (e) {}
 
-  // 2. Play Dynamic HTML5 Audio Element
   try {
     const dataUri = getWavChimeDataUri();
     if (dataUri) {
       const snd = new Audio(dataUri);
       snd.volume = 1.0;
-      snd.play().catch(() => {});
+      snd.play().catch(function() {});
     }
   } catch (err) {}
-
-  // 3. Play Web Audio API Oscillator Matrix
-  try {
-    const ctx = getAudioContext();
-    if (ctx) {
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-
-      const now = ctx.currentTime;
-      const notes = [
-        { freq: 880.00, start: 0.00, dur: 0.35, vol: 0.60 },  // A5
-        { freq: 1174.66, start: 0.09, dur: 0.40, vol: 0.70 }, // D6
-        { freq: 1479.98, start: 0.18, dur: 0.50, vol: 0.75 }, // F#6
-        { freq: 1760.00, start: 0.27, dur: 0.90, vol: 0.85 }  // A6 (Long sustained chime)
-      ];
-
-      notes.forEach(n => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(n.freq, now + n.start);
-
-        gain.gain.setValueAtTime(0.001, now + n.start);
-        gain.gain.linearRampToValueAtTime(n.vol, now + n.start + 0.025);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(now + n.start);
-        osc.stop(now + n.start + n.dur + 0.05);
-
-        // Harmonic shimmer
-        const harm = ctx.createOscillator();
-        const harmGain = ctx.createGain();
-        harm.type = 'triangle';
-        harm.frequency.setValueAtTime(n.freq * 2, now + n.start);
-
-        harmGain.gain.setValueAtTime(0.001, now + n.start);
-        harmGain.gain.linearRampToValueAtTime(n.vol * 0.35, now + n.start + 0.02);
-        harmGain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + (n.dur * 0.6));
-
-        harm.connect(harmGain);
-        harmGain.connect(ctx.destination);
-
-        harm.start(now + n.start);
-        harm.stop(now + n.start + n.dur + 0.05);
-      });
-    }
-  } catch (e) {}
 }
 
 /**
@@ -392,23 +308,21 @@ function toggleSoundNotification() {
 }
 
 /**
- * Update Sound Button Appearance
+ * Update Sound Button Appearance with Clean SVG
  */
 function updateSoundButtonUI() {
-  const icon = document.getElementById('soundIcon');
+  const wrap = document.getElementById('soundIconWrap');
   const text = document.getElementById('soundStatusText');
   const btn = document.getElementById('toggleSoundBtn');
 
-  if (!icon || !text || !btn) return;
+  if (!wrap || !text || !btn) return;
 
   if (ordersState.isSoundEnabled) {
-    icon.className = 'fa-solid fa-volume-high';
-    icon.style.color = '#10b981';
+    wrap.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="color:#10b981; vertical-align:middle;"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
     text.textContent = 'الصوت: مفعل';
     btn.style.borderColor = '#10b981';
   } else {
-    icon.className = 'fa-solid fa-volume-xmark';
-    icon.style.color = '#ef4444';
+    wrap.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="color:#ef4444; vertical-align:middle;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
     text.textContent = 'الصوت: مكتوم';
     btn.style.borderColor = '#ef4444';
   }
@@ -435,7 +349,7 @@ function flashTabTitle(alertText) {
   let isAlert = true;
   let count = 0;
 
-  titleFlashTimer = setInterval(() => {
+  titleFlashTimer = setInterval(function() {
     document.title = isAlert ? alertText : originalTitle;
     isAlert = !isAlert;
     count++;
@@ -461,7 +375,7 @@ function initGovFilterOptions() {
     "مرسى مطروح", "الوادي الجديد", "شمال سيناء", "جنوب سيناء"
   ];
 
-  egyptGovs.forEach(gov => {
+  egyptGovs.forEach(function(gov) {
     const opt = document.createElement('option');
     opt.value = gov;
     opt.textContent = gov;
@@ -471,10 +385,10 @@ function initGovFilterOptions() {
 
 /**
  * High-definition standalone WhatsApp SVG Icon
- * Eliminates missing icon box/tofu on all devices
  */
-function getWhatsAppIconSVG(size = 14) {
-  return `<svg style="width:${size}px; height:${size}px; fill:currentColor; vertical-align:middle; display:inline-block;" viewBox="0 0 448 512"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>`;
+function getWhatsAppIconSVG(size) {
+  const s = size || 14;
+  return '<svg style="width:' + s + 'px; height:' + s + 'px; fill:currentColor; vertical-align:middle; display:inline-block;" viewBox="0 0 448 512"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>';
 }
 
 /**
@@ -484,39 +398,18 @@ function getPaymentBadgeHTML(payMethod) {
   const method = (payMethod || 'الدفع عند الاستلام').toString().toLowerCase();
 
   if (method.includes('فودافون') || method.includes('vodafone')) {
-    return `
-      <span class="sys-pay-badge sys-pay-vodafone" title="طريقة الدفع: فودافون كاش">
-        <i class="fa-solid fa-mobile-screen-button"></i> فودافون كاش
-      </span>
-    `;
+    return '<span class="sys-pay-badge sys-pay-vodafone" title="طريقة الدفع: فودافون كاش">📱 فودافون كاش</span>';
   }
 
   if (method.includes('انستا') || method.includes('إنستا') || method.includes('instapay')) {
-    return `
-      <span class="sys-pay-badge sys-pay-instapay" title="طريقة الدفع: إنستاباي (InstaPay)">
-        <i class="fa-solid fa-bolt"></i> إنستاباي (InstaPay)
-      </span>
-    `;
+    return '<span class="sys-pay-badge sys-pay-instapay" title="طريقة الدفع: إنستاباي (InstaPay)">⚡ إنستاباي</span>';
   }
 
-  if (method.includes('محفظة') || method.includes('wallet') || method.includes('كاش')) {
-    return `
-      <span class="sys-pay-badge sys-pay-vodafone" title="طريقة الدفع: ${payMethod}">
-        <i class="fa-solid fa-wallet"></i> ${payMethod}
-      </span>
-    `;
-  }
-
-  // Default: Cash on delivery (الدفع عند الاستلام)
-  return `
-    <span class="sys-pay-badge sys-pay-cod" title="طريقة الدفع: الدفع عند الاستلام (معاينة وفحص قبل الدفع)">
-      <i class="fa-solid fa-hand-holding-dollar"></i> دفع عند الاستلام
-    </span>
-  `;
+  return '<span class="sys-pay-badge sys-pay-cod" title="طريقة الدفع: الدفع عند الاستلام">💵 دفع عند الاستلام</span>';
 }
 
 /**
- * Quick Filter Handlers (One-touch pills & stat cards)
+ * Quick Filter Handlers
  */
 function setQuickStatusFilter(status, btnEl) {
   ordersState.selectedStatus = status;
@@ -543,7 +436,7 @@ function setQuickPaymentFilter(method, btnEl) {
 }
 
 function updateQuickPillsUI(val, type) {
-  document.querySelectorAll('.sys-pill').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sys-pill').forEach(function(p) { p.classList.remove('active'); });
   if (val === 'all') {
     document.getElementById('pillAll')?.classList.add('active');
   } else if (val === 'جديد') {
@@ -591,32 +484,17 @@ function applyFilters() {
   const gov = ordersState.selectedGov;
   const payMethod = ordersState.selectedPayMethod;
 
-  ordersState.filteredOrders = ordersState.orders.filter(order => {
-    // Status Filter
-    if (status !== 'all' && order.status !== status) {
-      return false;
-    }
+  ordersState.filteredOrders = ordersState.orders.filter(function(order) {
+    if (status !== 'all' && order.status !== status) return false;
+    if (gov !== 'all' && !(order.customer?.governorate || '').includes(gov)) return false;
 
-    // Governorate Filter
-    if (gov !== 'all' && !(order.customer?.governorate || '').includes(gov)) {
-      return false;
-    }
-
-    // Payment Method Filter
     if (payMethod !== 'all') {
       const p = (order.customer?.payMethod || 'الدفع عند الاستلام').toLowerCase();
-      if (payMethod === 'cod' && !(p.includes('استلام') || p.includes('cod'))) {
-        return false;
-      }
-      if (payMethod === 'vodafone' && !(p.includes('فودافون') || p.includes('vodafone'))) {
-        return false;
-      }
-      if (payMethod === 'instapay' && !(p.includes('انستا') || p.includes('إنستا') || p.includes('instapay'))) {
-        return false;
-      }
+      if (payMethod === 'cod' && !(p.includes('استلام') || p.includes('cod'))) return false;
+      if (payMethod === 'vodafone' && !(p.includes('فودافون') || p.includes('vodafone'))) return false;
+      if (payMethod === 'instapay' && !(p.includes('انستا') || p.includes('إنستا') || p.includes('instapay'))) return false;
     }
 
-    // Search Query (ID, Name, Phone, Address, Notes, Items, Payment Method)
     if (query) {
       const matchId = (order.id || '').toLowerCase().includes(query);
       const matchName = (order.customer?.name || '').toLowerCase().includes(query);
@@ -624,9 +502,9 @@ function applyFilters() {
       const matchAddress = (order.customer?.address || '').toLowerCase().includes(query);
       const matchGov = (order.customer?.governorate || '').toLowerCase().includes(query);
       const matchPay = (order.customer?.payMethod || '').toLowerCase().includes(query);
-      const matchItem = (order.items || []).some(item => 
-        (item.name || '').toLowerCase().includes(query) || (item.code || '').toLowerCase().includes(query)
-      );
+      const matchItem = (order.items || []).some(function(item) {
+        return (item.name || '').toLowerCase().includes(query) || (item.code || '').toLowerCase().includes(query);
+      });
 
       if (!matchId && !matchName && !matchPhone && !matchAddress && !matchGov && !matchPay && !matchItem) {
         return false;
@@ -639,9 +517,6 @@ function applyFilters() {
   renderDashboard();
 }
 
-/**
- * Render Dashboard Stats & Orders Table
- */
 function renderDashboard() {
   updateStatsCards();
   renderOrdersTable();
@@ -652,16 +527,14 @@ function renderDashboard() {
  */
 function updateStatsCards() {
   const totalOrders = ordersState.orders.length;
-  const newOrders = ordersState.orders.filter(o => o.status === 'جديد').length;
-  const processingOrders = ordersState.orders.filter(o => o.status === 'قيد التجهيز' || o.status === 'تم الشحن').length;
-  const completedOrders = ordersState.orders.filter(o => o.status === 'تم التسليم').length;
+  const newOrders = ordersState.orders.filter(function(o) { return o.status === 'جديد'; }).length;
+  const processingOrders = ordersState.orders.filter(function(o) { return o.status === 'قيد التجهيز' || o.status === 'تم الشحن'; }).length;
+  const completedOrders = ordersState.orders.filter(function(o) { return o.status === 'تم التسليم'; }).length;
   
-  // Total Revenue (excluding cancelled orders)
   const totalRevenue = ordersState.orders
-    .filter(o => o.status !== 'ملغي')
-    .reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+    .filter(function(o) { return o.status !== 'ملغي'; })
+    .reduce(function(sum, o) { return sum + (o.grandTotal || 0); }, 0);
 
-  // Update DOM elements
   const elTotal = document.getElementById('statTotalOrders');
   const elNew = document.getElementById('statNewOrders');
   const elProc = document.getElementById('statProcessingOrders');
@@ -673,8 +546,8 @@ function updateStatsCards() {
   if (elNew) elNew.textContent = newOrders;
   if (elProc) elProc.textContent = processingOrders;
   if (elComp) elComp.textContent = completedOrders;
-  if (elRev) elRev.textContent = `${totalRevenue.toLocaleString('ar-EG')} ج.م`;
-  if (elBadge) elBadge.textContent = `${ordersState.filteredOrders.length} طلب`;
+  if (elRev) elRev.textContent = totalRevenue.toLocaleString('ar-EG') + ' ج.م';
+  if (elBadge) elBadge.textContent = ordersState.filteredOrders.length + ' طلب';
 }
 
 /**
@@ -685,36 +558,37 @@ function resolveProductInfo(item) {
   let code = item.code || '';
   const name = item.name || '';
 
-  // Look up in PRODUCTS_DATA if available to enrich missing image/code
   if ((!img || !code) && window.PRODUCTS_DATA && Array.isArray(window.PRODUCTS_DATA)) {
-    const found = window.PRODUCTS_DATA.find(p => p.id === item.id || p.name === name || (code && p.code === code));
+    const found = window.PRODUCTS_DATA.find(function(p) { return p.id === item.id || p.name === name || (code && p.code === code); });
     if (found) {
       if (!img) img = found.image;
       if (!code) code = found.code;
     }
   }
 
-  // If still missing code, try extracting from name e.g. "كود 24747"
   if (!code && name) {
     const codeMatch = name.match(/كود\s*([A-Za-z0-9\-_]+)/i);
-    if (codeMatch) {
-      code = codeMatch[1];
-    }
+    if (codeMatch) code = codeMatch[1];
   }
 
-  // Prepend ../ to relative image paths if running inside system/ folder
   let resolvedImg = img;
   if (resolvedImg && !resolvedImg.startsWith('http') && !resolvedImg.startsWith('data:') && !resolvedImg.startsWith('../')) {
     resolvedImg = '../' + resolvedImg;
   }
-  if (!resolvedImg) {
-    resolvedImg = '../1شنطة دي جي مشجر مقاس 17.jpg';
-  }
 
   return {
-    ...item,
+    id: item.id,
+    name: name,
     image: resolvedImg,
-    code: code || 'عام'
+    code: code || 'عام',
+    price: item.price,
+    quantity: item.quantity,
+    unit: item.unit,
+    shortLabel: item.shortLabel,
+    totalPieces: item.totalPieces,
+    selectedSize: item.selectedSize,
+    selectedColor: item.selectedColor,
+    itemTotal: item.itemTotal
   };
 }
 
@@ -734,119 +608,95 @@ function renderOrdersTable() {
 
   if (emptyState) emptyState.style.display = 'none';
 
-  tbody.innerHTML = ordersState.filteredOrders.map((order, idx) => {
+  tbody.innerHTML = ordersState.filteredOrders.map(function(order) {
     const cust = order.customer || {};
-    const itemsCount = (order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
-    const totalPieces = (order.items || []).reduce((acc, it) => acc + (it.totalPieces || it.quantity || 1), 0);
-    
-    // Clean phone number for links
     const cleanPhone = (cust.phone || '').replace(/[^0-9]/g, '');
     const waPhone = cleanPhone.startsWith('0') ? '2' + cleanPhone : cleanPhone;
-    const waMsg = encodeURIComponent(`مرحباً ${cust.name || ''}، نتواصل معك بخصوص طلبك رقم (${order.id}) من متجر HM Store.`);
-
+    const waMsg = encodeURIComponent('مرحباً ' + (cust.name || '') + '، نتواصل معك بخصوص طلبك رقم (' + order.id + ') من متجر HM Store.');
     const statusClass = getStatusClass(order.status);
 
-    return `
-      <tr class="sys-order-row ${statusClass}" data-status="${order.status}">
-        <td class="sys-col-order" data-label="رقم وتاريخ الطلب">
-          <div class="order-id-wrap">
-            <span class="order-id-badge">${order.id}</span>
-            <span class="order-date-text">${order.dateFormatted || formatDate(order.createdAt)}</span>
-          </div>
-        </td>
-        <td class="sys-col-customer" data-label="بيانات العميل">
-          <div class="cust-cell-name">
-            <div class="cust-avatar-icon"><i class="fa-solid fa-user"></i></div>
-            <strong class="cust-name-title">${cust.name || 'عميل'}</strong>
-          </div>
-          <div class="cust-cell-phone">
-            <a href="tel:${cust.phone}" class="cust-phone-link" title="اتصال هاتفي">
-              <i class="fa-solid fa-phone"></i> ${cust.phone || '-'}
-            </a>
-            ${cleanPhone ? `
-              <a href="https://wa.me/${waPhone}?text=${waMsg}" target="_blank" class="cust-wa-btn" title="محادثة واتساب سريعة">
-                ${getWhatsAppIconSVG(14)} <span>واتساب</span>
-              </a>
-            ` : ''}
-          </div>
-        </td>
-        <td class="sys-col-location" data-label="المحافظة والعنوان">
-          <div class="cust-gov-pill"><i class="fa-solid fa-location-dot"></i> ${cust.governorate || 'غير محدد'}</div>
-          <div class="cust-address-text" title="${cust.address || ''}">
-            ${cust.address || '-'}
-          </div>
-          ${cust.notes && cust.notes !== 'لا توجد ملاحظات' ? `
-            <div class="cust-notes-preview" title="${cust.notes}"><i class="fa-regular fa-comment-dots"></i> ${cust.notes}</div>
-          ` : ''}
-        </td>
-        <td class="sys-col-items" data-label="المنتجات والكمية">
-          <div class="sys-order-items-mini">
-            ${(order.items || []).map(rawItem => {
-              const item = resolveProductInfo(rawItem);
-              const pieceCount = item.totalPieces || item.quantity || 1;
-              const unitLabel = item.unit || item.shortLabel || 'قطعة';
-              return `
-                <div class="sys-order-item-mini-card">
-                  <img src="${item.image}" class="sys-order-item-mini-img" alt="${item.name}" loading="lazy" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'%23cbd5e1\'><path d=\'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z\'/></svg>'" />
-                  <div class="sys-order-item-mini-info">
-                    <div class="sys-order-item-mini-title">${item.name}</div>
-                    <div class="sys-order-item-mini-meta">
-                      <span class="sys-item-code-tag"><i class="fa-solid fa-barcode"></i> كود: ${item.code}</span>
-                      <span class="sys-item-qty-tag"><i class="fa-solid fa-box-open"></i> ${item.quantity} × (${unitLabel})</span>
-                      ${item.selectedSize && item.selectedSize !== 'قياسي' ? `<span class="sys-item-size-tag">مقاس: ${item.selectedSize}</span>` : ''}
-                    </div>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </td>
-        <td class="sys-col-payment" data-label="الحساب والدفع">
-          <div class="sys-order-price-row">
-            <span class="sys-grand-total-val">${order.grandTotal || 0} ج.م</span>
-            ${getPaymentBadgeHTML(cust.payMethod)}
-          </div>
-          <div class="sys-shipping-info-tag ${order.freeShippingApplied ? 'free-ship' : ''}">
-            ${order.freeShippingApplied ? '🎁 شحن مجاني' : `شحن: ${order.shippingFee || 0} ج.م`}
-          </div>
-        </td>
-        <td class="sys-col-status" data-label="حالة الطلب">
-          <div class="status-select-wrap">
-            <select class="status-pill ${statusClass}" onchange="updateOrderStatus('${order.id}', this.value)">
-              <option value="جديد" ${order.status === 'جديد' ? 'selected' : ''}>🟡 جديد</option>
-              <option value="قيد التجهيز" ${order.status === 'قيد التجهيز' ? 'selected' : ''}>🔵 قيد التجهيز</option>
-              <option value="تم الشحن" ${order.status === 'تم الشحن' ? 'selected' : ''}>🚚 تم الشحن</option>
-              <option value="تم التسليم" ${order.status === 'تم التسليم' ? 'selected' : ''}>🟢 تم التسليم</option>
-              <option value="ملغي" ${order.status === 'ملغي' ? 'selected' : ''}>🔴 ملغي</option>
-            </select>
-          </div>
-        </td>
-        <td class="sys-col-actions" data-label="إجراءات">
-          <div class="sys-action-btns">
-            <button class="sys-icon-btn btn-details" title="عرض تفاصيل الطلب كاملة" onclick="openOrderDetailsModal('${order.id}')">
-              <i class="fa-solid fa-eye"></i> <span class="mobile-action-label">تفاصيل</span>
-            </button>
-            ${cleanPhone ? `
-              <a href="https://wa.me/${waPhone}?text=${waMsg}" target="_blank" class="sys-icon-btn btn-wa" title="محادثة واتساب">
-                ${getWhatsAppIconSVG(16)} <span class="mobile-action-label">واتساب</span>
-              </a>
-            ` : ''}
-            <button class="sys-icon-btn btn-print" title="طباعة فاتورة / بوليصة شحن" onclick="printOrderInvoice('${order.id}')">
-              <i class="fa-solid fa-print"></i> <span class="mobile-action-label">طباعة</span>
-            </button>
-            <button class="sys-icon-btn btn-delete" title="حذف الطلب" onclick="deleteOrder('${order.id}')">
-              <i class="fa-solid fa-trash"></i> <span class="mobile-action-label">حذف</span>
-            </button>
-          </div>
-        </td>
-      </tr>
-    `;
+    return '<tr class="sys-order-row ' + statusClass + '" data-status="' + order.status + '">' +
+      '<td class="sys-col-order" data-label="رقم وتاريخ الطلب">' +
+        '<div class="order-id-wrap">' +
+          '<span class="order-id-badge">' + order.id + '</span>' +
+          '<span class="order-date-text">' + (order.dateFormatted || formatDate(order.createdAt)) + '</span>' +
+        '</div>' +
+      '</td>' +
+      '<td class="sys-col-customer" data-label="بيانات العميل">' +
+        '<div class="cust-cell-name">' +
+          '<div class="cust-avatar-icon">👤</div>' +
+          '<strong class="cust-name-title">' + (cust.name || 'عميل') + '</strong>' +
+        '</div>' +
+        '<div class="cust-cell-phone">' +
+          '<a href="tel:' + cust.phone + '" class="cust-phone-link" title="اتصال هاتفي">📞 ' + (cust.phone || '-') + '</a>' +
+          (cleanPhone ? '<a href="https://wa.me/' + waPhone + '?text=' + waMsg + '" target="_blank" class="cust-wa-btn" title="محادثة واتساب سريعة">' + getWhatsAppIconSVG(14) + ' <span>واتساب</span></a>' : '') +
+        '</div>' +
+      '</td>' +
+      '<td class="sys-col-location" data-label="المحافظة والعنوان">' +
+        '<div class="cust-gov-pill">📍 ' + (cust.governorate || 'غير محدد') + '</div>' +
+        '<div class="cust-address-text">' + (cust.address || '-') + '</div>' +
+        (cust.notes && cust.notes !== 'لا توجد ملاحظات' ? '<div class="cust-notes-preview">💬 ' + cust.notes + '</div>' : '') +
+      '</td>' +
+      '<td class="sys-col-items" data-label="المنتجات والكمية">' +
+        '<div class="sys-order-items-mini">' +
+          (order.items || []).map(function(rawItem) {
+            const item = resolveProductInfo(rawItem);
+            const unitLabel = item.unit || item.shortLabel || 'قطعة';
+            return '<div class="sys-order-item-mini-card">' +
+              '<div class="sys-thumb-wrap">' +
+                '<img src="' + encodeURI(item.image) + '" class="sys-order-item-mini-img" alt="' + item.name + '" loading="lazy" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
+                '<div class="sys-img-fallback-box" style="display:none;">👕</div>' +
+              '</div>' +
+              '<div class="sys-order-item-mini-info">' +
+                '<div class="sys-order-item-mini-title">' + item.name + '</div>' +
+                '<div class="sys-order-item-mini-meta">' +
+                  '<span class="sys-item-code-tag">كود: ' + item.code + '</span>' +
+                  '<span class="sys-item-qty-tag">' + item.quantity + ' × (' + unitLabel + ')</span>' +
+                  (item.selectedSize && item.selectedSize !== 'قياسي' ? '<span class="sys-item-size-tag">مقاس: ' + item.selectedSize + '</span>' : '') +
+                '</div>' +
+              '</div>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</td>' +
+      '<td class="sys-col-payment" data-label="الحساب والدفع">' +
+        '<div class="sys-order-price-row">' +
+          '<span class="sys-grand-total-val">' + (order.grandTotal || 0) + ' ج.م</span>' +
+          getPaymentBadgeHTML(cust.payMethod) +
+        '</div>' +
+        '<div class="sys-shipping-info-tag ' + (order.freeShippingApplied ? 'free-ship' : '') + '">' +
+          (order.freeShippingApplied ? '🎁 شحن مجاني' : 'شحن: ' + (order.shippingFee || 0) + ' ج.م') +
+        '</div>' +
+      '</td>' +
+      '<td class="sys-col-status" data-label="حالة الطلب">' +
+        '<div class="status-select-wrap">' +
+          '<select class="status-pill ' + statusClass + '" onchange="updateOrderStatus(\'' + order.id + '\', this.value)">' +
+            '<option value="جديد" ' + (order.status === 'جديد' ? 'selected' : '') + '>🟡 جديد</option>' +
+            '<option value="قيد التجهيز" ' + (order.status === 'قيد التجهيز' ? 'selected' : '') + '>🔵 قيد التجهيز</option>' +
+            '<option value="تم الشحن" ' + (order.status === 'تم الشحن' ? 'selected' : '') + '>🚚 تم الشحن</option>' +
+            '<option value="تم التسليم" ' + (order.status === 'تم التسليم' ? 'selected' : '') + '>🟢 تم التسليم</option>' +
+            '<option value="ملغي" ' + (order.status === 'ملغي' ? 'selected' : '') + '>🔴 ملغي</option>' +
+          '</select>' +
+        '</div>' +
+      '</td>' +
+      '<td class="sys-col-actions" data-label="إجراءات">' +
+        '<div class="sys-action-btns">' +
+          '<button class="sys-icon-btn btn-details" title="عرض تفاصيل الطلب كاملة" onclick="openOrderDetailsModal(\'' + order.id + '\')">' +
+            '🔍 <span class="mobile-action-label">تفاصيل</span>' +
+          '</button>' +
+          (cleanPhone ? '<a href="https://wa.me/' + waPhone + '?text=' + waMsg + '" target="_blank" class="sys-icon-btn btn-wa" title="محادثة واتساب">' + getWhatsAppIconSVG(15) + ' <span class="mobile-action-label">واتساب</span></a>' : '') +
+          '<button class="sys-icon-btn btn-print" title="طباعة فاتورة / بوليصة شحن" onclick="printOrderInvoice(\'' + order.id + '\')">' +
+            '🖨️ <span class="mobile-action-label">طباعة</span>' +
+          '</button>' +
+          '<button class="sys-icon-btn btn-delete" title="حذف الطلب" onclick="deleteOrder(\'' + order.id + '\')">' +
+            '🗑️ <span class="mobile-action-label">حذف</span>' +
+          '</button>' +
+        '</div>' +
+      '</td>' +
+    '</tr>';
   }).join('');
 }
 
-/**
- * Status CSS Class Helper
- */
 function getStatusClass(status) {
   switch (status) {
     case 'جديد': return 'status-new';
@@ -862,18 +712,17 @@ function getStatusClass(status) {
  * Update Order Status in Cloud (Firebase) and UI
  */
 function updateOrderStatus(orderId, newStatus) {
-  const order = ordersState.orders.find(o => o.id === orderId);
+  const order = ordersState.orders.find(function(o) { return o.id === orderId; });
   if (order) {
     order.status = newStatus;
     saveOrders();
     updateStatsCards();
     
-    // Sync to Cloud
     if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.updateOrderStatus(orderId, newStatus);
     }
 
-    showSysToast(`تم تحديث حالة الطلب (${orderId}) إلى: ${newStatus}`, 'info');
+    showSysToast('تم تحديث حالة الطلب (' + orderId + ') إلى: ' + newStatus, 'info');
     renderOrdersTable();
   }
 }
@@ -882,17 +731,16 @@ function updateOrderStatus(orderId, newStatus) {
  * Delete single order from Cloud (Firebase) and UI
  */
 function deleteOrder(orderId) {
-  if (confirm(`هل أنت متأكد من رغبتك في حذف الطلب رقم (${orderId}) نهائياً؟`)) {
-    ordersState.orders = ordersState.orders.filter(o => o.id !== orderId);
+  if (confirm('هل أنت متأكد من رغبتك في حذف الطلب رقم (' + orderId + ') نهائياً من السحابة؟')) {
+    ordersState.orders = ordersState.orders.filter(function(o) { return o.id !== orderId; });
     saveOrders();
     
-    // Delete from Cloud
     if (typeof FirebaseSync !== 'undefined') {
       FirebaseSync.deleteOrder(orderId);
     }
 
     applyFilters();
-    showSysToast(`تم حذف الطلب (${orderId}) بنجاح`, 'info');
+    showSysToast('تم حذف الطلب (' + orderId + ') بنجاح', 'info');
   }
 }
 
@@ -900,7 +748,7 @@ function deleteOrder(orderId) {
  * Open Order Details Modal
  */
 function openOrderDetailsModal(orderId) {
-  const order = ordersState.orders.find(o => o.id === orderId);
+  const order = ordersState.orders.find(function(o) { return o.id === orderId; });
   if (!order) return;
 
   ordersState.activeOrderModalId = orderId;
@@ -908,90 +756,64 @@ function openOrderDetailsModal(orderId) {
   const cleanPhone = (cust.phone || '').replace(/[^0-9]/g, '');
   const waPhone = cleanPhone.startsWith('0') ? '2' + cleanPhone : cleanPhone;
 
-  // Set modal header & details
   document.getElementById('modalOrderId').textContent = order.id;
-  document.getElementById('modalOrderDate').textContent = order.dateFormatted || formatDate(order.createdAt);
-  
   document.getElementById('modalCustName').textContent = cust.name || 'عميل';
-  document.getElementById('modalCustPhone').innerHTML = `
-    <a href="tel:${cust.phone}" class="cust-phone-link"><i class="fa-solid fa-phone"></i> ${cust.phone}</a>
-    ${cleanPhone ? `<a href="https://wa.me/${waPhone}" target="_blank" class="cust-wa-btn" style="margin-right:8px;">${getWhatsAppIconSVG(14)} واتساب</a>` : ''}
-  `;
+  document.getElementById('modalCustPhone').innerHTML = '<a href="tel:' + cust.phone + '" class="cust-phone-link">📞 ' + (cust.phone || '-') + '</a>' +
+    (cleanPhone ? '<a href="https://wa.me/' + waPhone + '" target="_blank" class="cust-wa-btn" style="margin-right:8px;">' + getWhatsAppIconSVG(14) + ' واتساب</a>' : '');
+  
   document.getElementById('modalCustGov').textContent = cust.governorate || '-';
   document.getElementById('modalCustAddress').textContent = cust.address || '-';
   document.getElementById('modalCustNotes').textContent = cust.notes || 'لا توجد ملاحظات';
   
   const payBadge = getPaymentBadgeHTML(cust.payMethod);
-  document.getElementById('modalCustPayment').innerHTML = `
-    <div style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:3px;">
-      ${payBadge}
-    </div>
-  `;
+  document.getElementById('modalCustPayment').innerHTML = '<div style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:3px;">' + payBadge + '</div>';
 
-  // Items table
   const tbody = document.getElementById('modalItemsTbody');
   if (tbody) {
-    tbody.innerHTML = (order.items || []).map((rawItem, i) => {
+    tbody.innerHTML = (order.items || []).map(function(rawItem, i) {
       const item = resolveProductInfo(rawItem);
       const pieceCount = item.totalPieces || item.quantity || 1;
       const unitLabel = item.unit || item.shortLabel || 'قطعة';
-      return `
-        <tr>
-          <td>${i + 1}</td>
-          <td>
-            <div class="order-item-info-col">
-              <img src="${item.image}" class="order-item-thumb" onerror="this.src='../1شنطة دي جي مشجر مقاس 17.jpg'" />
-              <div>
-                <strong style="color:var(--sys-text-main); font-size:0.9rem;">${item.name}</strong>
-                <div style="font-size:0.75rem; color:var(--sys-text-muted); margin-top:3px;">
-                  <span class="sys-item-code-tag"><i class="fa-solid fa-barcode"></i> كود: ${item.code}</span>
-                  ${item.selectedSize ? ` | المقاس: <strong>${item.selectedSize}</strong>` : ''}
-                  ${item.selectedColor ? ` | اللون: <strong>${item.selectedColor}</strong>` : ''}
-                </div>
-              </div>
-            </div>
-          </td>
-          <td style="font-weight:700;">
-            ${item.quantity} × (${unitLabel})
-            <div style="font-size:0.75rem; color:var(--sys-text-muted);">(${pieceCount} قطع إجمالي)</div>
-          </td>
-          <td>${item.price} ج.م</td>
-          <td style="font-weight:800; color:var(--sys-primary);">${item.itemTotal || (item.price * pieceCount)} ج.م</td>
-        </tr>
-      `;
+      return '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td>' +
+          '<div class="order-item-info-col">' +
+            '<img src="' + encodeURI(item.image) + '" class="order-item-thumb" onerror="this.src=\'data:image/svg+xml;utf8,<svg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'40\\\' height=\\\'40\\\' viewBox=\\\'0 0 24 24\\\' fill=\\\'%23cbd5e1\\\'><path d=\\\'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z\\\'/></svg>\'" />' +
+            '<div>' +
+              '<strong style="color:var(--sys-text-main); font-size:0.9rem;">' + item.name + '</strong>' +
+              '<div style="font-size:0.75rem; color:var(--sys-text-muted); margin-top:3px;">' +
+                '<span class="sys-item-code-tag">كود: ' + item.code + '</span>' +
+                (item.selectedSize ? ' | المقاس: <strong>' + item.selectedSize + '</strong>' : '') +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</td>' +
+        '<td style="font-weight:700;">' + item.quantity + ' × (' + unitLabel + ')<div style="font-size:0.75rem; color:var(--sys-text-muted);">(' + pieceCount + ' قطع إجمالي)</div></td>' +
+        '<td>' + item.price + ' ج.م</td>' +
+        '<td style="font-weight:800; color:var(--sys-primary);">' + (item.itemTotal || (item.price * pieceCount)) + ' ج.م</td>' +
+      '</tr>';
     }).join('');
   }
 
-  // Financials
-  document.getElementById('modalSubtotal').textContent = `${order.subtotal || 0} ج.م`;
+  document.getElementById('modalSubtotal').textContent = (order.subtotal || 0) + ' ج.م';
   document.getElementById('modalShipping').innerHTML = order.freeShippingApplied 
-    ? `<span style="color:#059669; font-weight:800;">شحن مجاني 🎁 (0 ج.م)</span>`
-    : `${order.shippingFee || 0} ج.م`;
-  document.getElementById('modalGrandTotal').textContent = `${order.grandTotal || 0} ج.م`;
+    ? '<span style="color:#059669; font-weight:800;">شحن مجاني 🎁 (0 ج.م)</span>'
+    : (order.shippingFee || 0) + ' ج.م';
+  document.getElementById('modalGrandTotal').textContent = (order.grandTotal || 0) + ' ج.م';
 
-  // Status selector inside modal
-  const modalStatusSelect = document.getElementById('modalOrderStatusSelect');
-  if (modalStatusSelect) {
-    modalStatusSelect.value = order.status;
-  }
+  const statusSel = document.getElementById('modalOrderStatusSelect');
+  if (statusSel) statusSel.value = order.status || 'جديد';
 
-  // Show Modal
   const modal = document.getElementById('orderDetailsModal');
   if (modal) modal.classList.add('active');
 }
 
-/**
- * Close Order Details Modal
- */
 function closeOrderDetailsModal() {
   const modal = document.getElementById('orderDetailsModal');
   if (modal) modal.classList.remove('active');
   ordersState.activeOrderModalId = null;
 }
 
-/**
- * Update status from inside modal
- */
 function handleModalStatusChange(newStatus) {
   if (ordersState.activeOrderModalId) {
     updateOrderStatus(ordersState.activeOrderModalId, newStatus);
@@ -999,137 +821,91 @@ function handleModalStatusChange(newStatus) {
 }
 
 /**
- * Print Shipping Invoice / Receipt
+ * Print Order Invoice
  */
 function printOrderInvoice(orderId) {
-  const order = ordersState.orders.find(o => o.id === orderId);
+  const order = ordersState.orders.find(function(o) { return o.id === orderId; });
   if (!order) return;
 
   const cust = order.customer || {};
-  const payMethodStr = cust.payMethod || 'الدفع عند الاستلام';
-  const isPrepaid = payMethodStr.includes('فودافون') || payMethodStr.includes('انستا') || payMethodStr.includes('إنستا') || payMethodStr.includes('كاش');
+  const area = document.getElementById('printInvoiceArea');
+  if (!area) return;
 
-  const itemsHtml = (order.items || []).map((rawItem, i) => {
-    const it = resolveProductInfo(rawItem);
-    return `
-    <tr>
-      <td style="text-align:center;">${i + 1}</td>
-      <td>
-        <strong>${it.name}</strong><br>
-        <small style="font-weight:bold; color:#8b1842;">كود المنتج: ${it.code}</small> | 
-        <small>المقاس: ${it.selectedSize || 'قياسي'} | اللون: ${it.selectedColor || 'المعروض'}</small>
-      </td>
-      <td style="text-align:center;">${it.quantity} × (${it.unit || it.shortLabel || 'قطعة'})</td>
-      <td style="text-align:center;">${it.itemTotal || (it.price * (it.totalPieces || it.quantity))} ج.م</td>
-    </tr>
-  `;
-  }).join('');
+  area.innerHTML = '<div class="invoice-box" style="direction:rtl; font-family:sans-serif; padding:20px; border:2px solid #000; max-width:800px; margin:0 auto;">' +
+    '<div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:15px;">' +
+      '<h1 style="margin:0; font-size:1.8rem;">' + CONFIG.STORE_NAME + '</h1>' +
+      '<p style="margin:4px 0 0 0; font-size:1rem;">فاتورة وبوليصة تسليم أوردر - رقم: <strong>' + order.id + '</strong></p>' +
+      '<p style="margin:2px 0 0 0; font-size:0.85rem; color:#555;">تاريخ الطلب: ' + (order.dateFormatted || formatDate(order.createdAt)) + '</p>' +
+    '</div>' +
+    '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px; font-size:0.95rem;">' +
+      '<div><strong>اسم العميل:</strong> ' + (cust.name || '-') + '</div>' +
+      '<div><strong>رقم الهاتف:</strong> ' + (cust.phone || '-') + '</div>' +
+      '<div><strong>المحافظة:</strong> ' + (cust.governorate || '-') + '</div>' +
+      '<div><strong>طريقة الدفع:</strong> ' + (cust.payMethod || 'دفع عند الاستلام') + '</div>' +
+      '<div style="grid-column:1/-1;"><strong>العنوان التفصيلي:</strong> ' + (cust.address || '-') + '</div>' +
+      (cust.notes ? '<div style="grid-column:1/-1; background:#f5f5f5; padding:6px;"><strong>ملاحظات:</strong> ' + cust.notes + '</div>' : '') +
+    '</div>' +
+    '<table style="width:100%; border-collapse:collapse; margin-bottom:15px; text-align:right;" border="1">' +
+      '<tr style="background:#f0f0f0;">' +
+        '<th style="padding:6px;">#</th>' +
+        '<th style="padding:6px;">المنتج</th>' +
+        '<th style="padding:6px;">الكود</th>' +
+        '<th style="padding:6px;">الكمية</th>' +
+        '<th style="padding:6px;">المقاس</th>' +
+        '<th style="padding:6px;">الإجمالي</th>' +
+      '</tr>' +
+      (order.items || []).map(function(it, idx) {
+        return '<tr>' +
+          '<td style="padding:6px;">' + (idx + 1) + '</td>' +
+          '<td style="padding:6px;">' + it.name + '</td>' +
+          '<td style="padding:6px;">' + (it.code || '-') + '</td>' +
+          '<td style="padding:6px;">' + it.quantity + ' × (' + (it.unit || 'قطعة') + ')</td>' +
+          '<td style="padding:6px;">' + (it.selectedSize || 'قياسي') + '</td>' +
+          '<td style="padding:6px; font-weight:bold;">' + (it.itemTotal || (it.price * (it.multiplier || 1) * it.quantity)) + ' ج.م</td>' +
+        '</tr>';
+      }).join('') +
+    '</table>' +
+    '<div style="text-align:left; font-size:1.05rem; line-height:1.6;">' +
+      '<div>إجمالي المنتجات: <strong>' + (order.subtotal || 0) + ' ج.م</strong></div>' +
+      '<div>مصاريف الشحن: <strong>' + (order.freeShippingApplied ? '0 ج.م (شحن مجاني)' : (order.shippingFee || 0) + ' ج.م') + '</strong></div>' +
+      '<div style="font-size:1.3rem; margin-top:5px; border-top:2px solid #000; padding-top:5px;">المبلغ الإجمالي المستحق: <strong>' + (order.grandTotal || 0) + ' ج.م</strong></div>' +
+    '</div>' +
+  '</div>';
 
-  const invoiceContainer = document.getElementById('printInvoiceArea');
-  if (!invoiceContainer) return;
-
-  invoiceContainer.innerHTML = `
-    <div class="invoice-template" style="display:block;">
-      <div class="inv-header">
-        <h2>🛍️ ${CONFIG.STORE_NAME}</h2>
-        <p>بوليصة شحن وتأكيد طلب العميل</p>
-        <div style="font-weight:800; font-size:16px; margin-top:5px; color:#8b1842;">رقم الطلب: ${order.id}</div>
-      </div>
-
-      <div class="inv-box-grid">
-        <div>
-          <strong>👤 بيانات العميل:</strong><br>
-          الاسم: ${cust.name || 'عميل'}<br>
-          الموبايل: <span style="direction:ltr; display:inline-block; font-weight:bold;">${cust.phone || '-'}</span><br>
-          المحافظة: <strong>${cust.governorate || '-'}</strong><br>
-          العنوان بالتفصيل: ${cust.address || '-'}
-        </div>
-        <div>
-          <strong>📦 تفاصيل الفاتورة:</strong><br>
-          تاريخ الطلب: ${order.dateFormatted || formatDate(order.createdAt)}<br>
-          طريقة الدفع: <strong style="color:#8b1842;">${payMethodStr}</strong><br>
-          ملاحظات العميل: ${cust.notes || 'لا توجد'}<br>
-          حالة الشحن: <strong>${order.freeShippingApplied ? 'شحن مجاني 🎁' : `${order.shippingFee || 0} ج.م`}</strong>
-        </div>
-      </div>
-
-      <table class="inv-table">
-        <thead>
-          <tr>
-            <th style="width:30px; text-align:center;">#</th>
-            <th>المنتج والمواصفات</th>
-            <th style="width:110px; text-align:center;">الكمية / النظام</th>
-            <th style="width:90px; text-align:center;">الإجمالي</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml}
-        </tbody>
-      </table>
-
-      ${isPrepaid ? `
-        <div class="inv-total-box" style="background:#fff7ed; border:2px dashed #f97316; text-align:right; padding:12px 16px;">
-          <div style="font-size:14px; font-weight:bold; color:#c2410c; margin-bottom:4px;">
-            💳 طريقة الدفع: <strong>${payMethodStr}</strong> (دفع إلكتروني مسبق)
-          </div>
-          <div>المبلغ الإجمالي للطلب: <span style="color:#8b1842; font-size:20px; font-weight:bold;">${order.grandTotal || 0} ج.م</span></div>
-          <div style="font-size:12px; font-weight:bold; margin-top:5px; color:#9a3412;">
-            ⚠️ ملحوظة للمندوب: العميل محدد الدفع مسبقاً عبر (${payMethodStr}) - تسليم الأوردر وفق تأكيد الإدارة.
-          </div>
-        </div>
-      ` : `
-        <div class="inv-total-box">
-          المبلغ الإجمالي المطلوب تحصيله عند الاستلام: <span style="color:#8b1842; font-size:20px;">${order.grandTotal || 0} ج.م</span>
-          <div style="font-size:12px; font-weight:normal; margin-top:4px; color:#555;">
-            (إجمالي المنتجات: ${order.subtotal || 0} ج.م + مصاريف الشحن: ${order.shippingFee || 0} ج.م - دفع عند الاستلام 💵)
-          </div>
-        </div>
-      `}
-
-      <div class="inv-footer-note">
-        ✨ شكراً لتعاملكم مع متجر <strong>HM Store</strong> | لخدمة العملاء والاستفسارات واتساب: <strong>01281032887</strong>
-        <br>متاح معاينة الشحنة وفحص المنتجات مع المندوب قبل الاستلام.
-      </div>
-    </div>
-  `;
-
-  // Trigger print dialog
-  setTimeout(() => {
-    window.print();
-  }, 200);
+  window.print();
 }
 
 /**
- * Export Orders to Excel / CSV with UTF-8 BOM
+ * Export Orders to CSV
  */
 function exportOrdersToCSV() {
   if (ordersState.orders.length === 0) {
-    showSysToast('⚠️ لا توجد طلبات لتصديرها حالياً', 'warning');
+    showSysToast('لا توجد طلبات لتصديرها', 'warning');
     return;
   }
 
-  // Header row
-  let csv = '\uFEFF'; // UTF-8 BOM for Arabic support in Excel
-  csv += 'رقم الطلب,تاريخ الطلب,اسم العميل,رقم الموبايل,المحافظة,العنوان,المنتجات المطلوبة,إجمالي المنتجات,رسوم الشحن,المبلغ الإجمالي,طريقة الدفع,حالة الطلب,ملاحظات\n';
+  let csv = '\uFEFFرقم الطلب,تاريخ الطلب,اسم العميل,رقم الهاتف,المحافظة,العنوان,طريقة الدفع,حالة الطلب,عدد المنتجات,إجمالي المنتجات,مصاريف الشحن,المبلغ الإجمالي,تفاصيل الأصناف\n';
 
-  ordersState.orders.forEach(o => {
+  ordersState.orders.forEach(function(o) {
     const cust = o.customer || {};
-    const itemsSummary = (o.items || []).map(it => `${it.name} (${it.quantity} ${it.unit || 'قطعة'})`).join(' - ');
-    
+    const itemsDesc = (o.items || []).map(function(it) {
+      return (it.name || '') + ' [كود:' + (it.code || '') + ' - كمية:' + it.quantity + ' ' + (it.unit || '') + ' - مقاس:' + (it.selectedSize || '') + ']';
+    }).join(' | ').replace(/"/g, '""');
+
     const row = [
-      `"${o.id || ''}"`,
-      `"${o.dateFormatted || formatDate(o.createdAt)}"`,
-      `"${(cust.name || '').replace(/"/g, '""')}"`,
-      `"${(cust.phone || '').replace(/"/g, '""')}"`,
-      `"${(cust.governorate || '').replace(/"/g, '""')}"`,
-      `"${(cust.address || '').replace(/"/g, '""')}"`,
-      `"${itemsSummary.replace(/"/g, '""')}"`,
+      o.id,
+      '"' + (o.dateFormatted || formatDate(o.createdAt)) + '"',
+      '"' + (cust.name || '').replace(/"/g, '""') + '"',
+      '"' + (cust.phone || '').replace(/"/g, '""') + '"',
+      '"' + (cust.governorate || '').replace(/"/g, '""') + '"',
+      '"' + (cust.address || '').replace(/"/g, '""') + '"',
+      '"' + (cust.payMethod || 'دفع عند الاستلام') + '"',
+      '"' + o.status + '"',
+      (o.items || []).length,
       o.subtotal || 0,
       o.shippingFee || 0,
       o.grandTotal || 0,
-      `"${(cust.payMethod || '').replace(/"/g, '""')}"`,
-      `"${o.status || 'جديد'}"`,
-      `"${(cust.notes || '').replace(/"/g, '""')}"`
+      '"' + itemsDesc + '"'
     ];
     csv += row.join(',') + '\n';
   });
@@ -1138,30 +914,25 @@ function exportOrdersToCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `HM_Store_Orders_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = 'طلبات_HM_Store_' + new Date().toISOString().slice(0, 10) + '.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  showSysToast('📥 تم تصدير الطلبات بنجاح إلى ملف إكسل CSV', 'success');
+  showSysToast('📊 تم تصدير ملف الإكسل (CSV) بنجاح', 'success');
 }
 
 /**
- * Backup Orders to JSON File
+ * Backup Orders JSON
  */
 function backupOrdersJSON() {
-  if (ordersState.orders.length === 0) {
-    showSysToast('⚠️ لا توجد طلبات لعمل نسخة احتياطية', 'warning');
-    return;
-  }
-
-  const jsonStr = JSON.stringify(ordersState.orders, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const data = JSON.stringify(ordersState.orders, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `HM_Orders_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = 'نسخة_احتياطية_طلبات_HM_' + new Date().toISOString().slice(0, 10) + '.json';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1174,29 +945,28 @@ function backupOrdersJSON() {
  * Clear All Completed / Cancelled Orders
  */
 function clearOldOrders() {
-  const toDelete = ordersState.orders.filter(o => o.status === 'تم التسليم' || o.status === 'ملغي');
+  const toDelete = ordersState.orders.filter(function(o) { return o.status === 'تم التسليم' || o.status === 'ملغي'; });
   const completedCount = toDelete.length;
   if (completedCount === 0) {
     showSysToast('لا توجد طلبات مسلّمة أو ملغية للأرشفة حالياً', 'info');
     return;
   }
 
-  if (confirm(`هل ترغب في مسح وأرشفة ${completedCount} طلب من الطلبات المسلمة والملغية نهائياً من السيرفر السحابي؟ (سيتم الإبقاء على الطلبات الجديدة وقيد التجهيز)`)) {
-    const idsToDelete = toDelete.map(o => o.id);
-    ordersState.orders = ordersState.orders.filter(o => o.status !== 'تم التسليم' && o.status !== 'ملغي');
+  if (confirm('هل ترغب في مسح وأرشفة ' + completedCount + ' طلب من الطلبات المسلمة والملغية نهائياً من السيرفر السحابي؟ (سيتم الإبقاء على الطلبات الجديدة وقيد التجهيز)')) {
+    const idsToDelete = toDelete.map(function(o) { return o.id; });
+    ordersState.orders = ordersState.orders.filter(function(o) { return o.status !== 'تم التسليم' && o.status !== 'ملغي'; });
     saveOrders();
 
-    // 1. Delete from Firebase Cloud Database
     if (typeof FirebaseSync !== 'undefined' && FirebaseSync.deleteMultipleOrders) {
       FirebaseSync.deleteMultipleOrders(idsToDelete);
     } else {
-      idsToDelete.forEach(id => {
-        fetch(`https://project-hm-1aeff-default-rtdb.firebaseio.com/orders/${id}.json`, { method: 'DELETE' }).catch(() => {});
+      idsToDelete.forEach(function(id) {
+        fetch('https://project-hm-1aeff-default-rtdb.firebaseio.com/orders/' + encodeURIComponent(id) + '.json', { method: 'DELETE' }).catch(function() {});
       });
     }
 
     applyFilters();
-    showSysToast(`✅ تم تنظيف ومسح ${completedCount} طلب من السحابة بنجاح ولن تعود عند التحديث`, 'success');
+    showSysToast('✅ تم تنظيف ومسح ' + completedCount + ' طلب من السحابة بنجاح ولن تعود عند التحديث', 'success');
   }
 }
 
@@ -1216,7 +986,7 @@ function formatDate(isoStr) {
 /**
  * System Toast Notification
  */
-function showSysToast(message, type = 'info') {
+function showSysToast(message, type) {
   let container = document.getElementById('sysToastContainer');
   if (!container) {
     container = document.createElement('div');
@@ -1228,17 +998,17 @@ function showSysToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = 'sys-toast';
   
-  let icon = 'fa-info-circle';
-  if (type === 'success') icon = 'fa-check-circle';
-  if (type === 'warning') icon = 'fa-triangle-exclamation';
+  let icon = 'ℹ️';
+  if (type === 'success') icon = '✅';
+  if (type === 'warning') icon = '⚠️';
 
-  toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+  toast.innerHTML = '<span style="font-size:1.1rem;">' + icon + '</span> <span>' + message + '</span>';
   container.appendChild(toast);
 
-  setTimeout(() => {
+  setTimeout(function() {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(-100%)';
     toast.style.transition = 'all 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
+    setTimeout(function() { toast.remove(); }, 300);
   }, 4000);
 }

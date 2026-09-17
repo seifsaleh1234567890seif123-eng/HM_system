@@ -1,4 +1,4 @@
-﻿/**
+/**
  * HM STORE - FIREBASE REALTIME & CLOUD DATABASE SYNC MODULE
  * Ultra-Reliable Multi-Device Hybrid Sync (WebSocket + Fast REST Polling)
  * 100% Compatible with all Networks, ISPs, and Separate Hosting Links
@@ -52,10 +52,10 @@ const FirebaseSync = (function() {
     const badges = document.querySelectorAll('.firebase-live-indicator');
     badges.forEach(function(b) {
       if (connected) {
-        b.innerHTML = '<span style="color:#10b981; font-size:12px;">â—</span> Ù…ØªØµÙ„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ± Ø§Ù„Ø³Ø­Ø§Ø¨ÙŠ (Live)';
+        b.innerHTML = '<span style="color:#10b981; font-size:12px;">●</span> متصل بالسيرفر السحابي (Live)';
         b.style.borderColor = 'rgba(16, 185, 129, 0.4)';
       } else {
-        b.innerHTML = '<span style="color:#10b981; font-size:12px;">â—</span> Ù…ØªØµÙ„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ± Ø§Ù„Ø³Ø­Ø§Ø¨ÙŠ (Cloud Sync)';
+        b.innerHTML = '<span style="color:#10b981; font-size:12px;">●</span> متصل بالسيرفر السحابي (Cloud Sync)';
         b.style.borderColor = 'rgba(16, 185, 129, 0.4)';
       }
     });
@@ -88,7 +88,7 @@ const FirebaseSync = (function() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(order)
       }).then(function() {
-        console.log("â˜ï¸ [Cloud REST] Order (" + order.id + ") saved to Firebase!");
+        console.log("☁️ [Cloud REST] Order (" + order.id + ") saved to Firebase!");
       }).catch(function(err) {});
     } catch (e) {}
 
